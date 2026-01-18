@@ -1,14 +1,13 @@
-# bot.py
+import os
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
 
-from config import TOKEN, ADMIN_ID
 from states import Order
 from keyboards import models_kb
 
-# допустимые размеры
-VALID_SIZES = {"XS", "S", "M", "L", "XL"}
+TOKEN = os.environ["BOT_TOKEN"]
+ADMIN_ID = int(os.environ["ADMIN_ID"])
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(bot, storage=MemoryStorage())
@@ -25,49 +24,37 @@ async def start(msg: types.Message):
 
 @dp.callback_query_handler()
 async def choose_model(call: types.CallbackQuery, state: FSMContext):
-    # сохраняем выбранную модель
     await state.update_data(model=call.data)
     await Order.size.set()
-    await call.message.answer(
-        "Выбери размер: XS / S / M / L / XL"
-    )
+    await call.message.answer("Выбери размер: XS / S / M / L / XL")
 
 @dp.message_handler(state=Order.size)
-async def get_size(msg: types.Message, state: FSMContext):
-    size = msg.text.strip().upper()
-    if size not in VALID_SIZES:
-        await msg.answer(
-            "Неверный размер. Пожалуйста, выбери один из: XS / S / M / L / XL"
-        )
-        return
-    await state.update_data(size=size)
+async def size(msg: types.Message, state: FSMContext):
+    await state.update_data(size=msg.text)
     await Order.city.set()
     await msg.answer("Город доставки?")
 
 @dp.message_handler(state=Order.city)
-async def get_city(msg: types.Message, state: FSMContext):
-    await state.update_data(city=msg.text.strip())
+async def city(msg: types.Message, state: FSMContext):
+    await state.update_data(city=msg.text)
     await Order.name.set()
     await msg.answer("Как тебя зовут?")
 
 @dp.message_handler(state=Order.name)
-async def get_name(msg: types.Message, state: FSMContext):
-    await state.update_data(name=msg.text.strip())
+async def name(msg: types.Message, state: FSMContext):
+    await state.update_data(name=msg.text)
     await Order.contact.set()
     await msg.answer("Контакт для связи (@username или телефон)")
 
 @dp.message_handler(state=Order.contact)
-async def get_contact(msg: types.Message, state: FSMContext):
-    await state.update_data(contact=msg.text.strip())
+async def contact(msg: types.Message, state: FSMContext):
+    await state.update_data(contact=msg.text)
     await Order.comment.set()
-    await msg.answer(
-        "Комментарий к заказу? (если нет — напиши «—»)"
-    )
+    await msg.answer("Комментарий? (если нет — напиши «—»)")
 
 @dp.message_handler(state=Order.comment)
 async def finish(msg: types.Message, state: FSMContext):
     data = await state.get_data()
-    comment = msg.text.strip()
 
     text = (
         "🧾 *НОВЫЙ ЗАКАЗ — Luminary Wear*\n\n"
@@ -76,10 +63,9 @@ async def finish(msg: types.Message, state: FSMContext):
         f"📍 Город: {data['city']}\n"
         f"👤 Имя: {data['name']}\n"
         f"📱 Контакт: {data['contact']}\n"
-        f"💬 Комментарий: {comment}"
+        f"💬 Комментарий: {msg.text}"
     )
 
-    # пересылаем заказ тебе
     await bot.send_message(ADMIN_ID, text, parse_mode="Markdown")
     await msg.answer("Спасибо 🤍 Я передал заказ дизайнеру Luminary Wear.")
     await state.finish()
